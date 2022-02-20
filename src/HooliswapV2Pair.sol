@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.10;
+pragma solidity ^0.8.2;
 
 import "solmate/tokens/ERC20.sol";
 import "solmate/utils/FixedPointMathLib.sol";
@@ -9,10 +9,6 @@ interface IERC20 {
   function balanceOf(address) external returns (uint256);
   function transfer(address to, uint256 amount) external;
 }
-
-error InsufficientLiquidityMinted();
-error InsufficientLiquidityBurned();
-error TransferFailed();
 
 contract HooliswapV2Pair is ERC20, Math {
   uint256 constant MINIMUM_LIQUIDITY = 1000;
@@ -34,7 +30,7 @@ contract HooliswapV2Pair is ERC20, Math {
     token1 = _token1;
   }
 
-  function mint() public {
+  function mint() public
     (uint112 r0, uint112 r1, ) = getReserves();
     uint256 balance0 = IERC20(token0).balanceOf(address(this));
     uint256 balance1 = IERC20(token1).balanceOf(address(this));
@@ -54,7 +50,7 @@ contract HooliswapV2Pair is ERC20, Math {
       );
     }
 
-    if (liquidity <= 0) revert InsufficientLiquidityMinted();
+    if (liquidity <= 0) revert("Insufficient liquidity minted");
 
     _mint(msg.sender, liquidity);
     _update(balance0, balance1);
