@@ -30,7 +30,7 @@ contract HooliswapV2Pair is ERC20, Math {
     token1 = _token1;
   }
 
-  function mint() public
+  function mint() public {
     (uint112 r0, uint112 r1, ) = getReserves();
     uint256 balance0 = IERC20(token0).balanceOf(address(this));
     uint256 balance1 = IERC20(token1).balanceOf(address(this));
