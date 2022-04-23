@@ -11,6 +11,8 @@ interface IERC20 {
     function transfer(address to, uint256 amount) external;
 }
 
+error InsufficientLiquidityMinted();
+
 contract HooliswapV2Pair is ERC20, Math {
     using FixedPointMathLib for uint256;
 
@@ -81,8 +83,35 @@ contract HooliswapV2Pair is ERC20, Math {
             // a liquidity pool share to $100, the attacker would need to
             // donate $100,000 to the pool, which would be permanently locked up as liquidity
         } else {
-            // proportional to the deposited amount
-            // proportional to the total issued amount of LP-tokens
+            // Minted LP shares should be:
+            // - Proportional to the deposited amount
+            // - Proportional to the total issued amount of LP-tokens
+
+            // With every subsequent deposit we already know the exchange rate
+            // between the two assets, and we expect liquidity providers to
+            // provide equal value in both. If they don't, we give them
+            // liquidity tokens based on the lesser value they provided as a punishment
+
+            // For example:
+            // r0   r1
+            // 1001 1001
+            // mean = sqrt(1001 * 1001) = 10001
+            // initial_liquidity = mean - MINIMUM_LIQUDITY = 1001 - 1000 = 1
+            // total_supply = initial_liquidity = 1
+            //
+            // lets say the ration of deposited amounts is diffent,
+            // LP amounts will also be different, and one of them will be bigger than the other
+            //
+            // if we use max:
+            // add(1, 2) = max(1 * 1/1001, 2 * 1/1001)
+            //           = max(1/1001, 2/1001) = 2/1001
+            //           = 0.00199800199
+            //
+            // if we use min:
+            // add(1, 2) = max(1 * 1/1001, 2 * 1/1001)
+            //           = max(1/1001, 2/1001) = 1/1001
+            //           = 0.00099900099
+
             liquidity = min(
                 (amount0 * totalSupply) / r0,
                 (amount1 * totalSupply) / r1
