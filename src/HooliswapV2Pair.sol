@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.10;
+pragma solidity ^0.8.2;
 
 import "solmate/tokens/ERC20.sol";
 import "solmate/utils/FixedPointMathLib.sol";
@@ -10,10 +10,6 @@ interface IERC20 {
 
     function transfer(address to, uint256 amount) external;
 }
-
-error InsufficientLiquidityMinted();
-error InsufficientLiquidityBurned();
-error TransferFailed();
 
 contract HooliswapV2Pair is ERC20, Math {
     using FixedPointMathLib for uint256;
