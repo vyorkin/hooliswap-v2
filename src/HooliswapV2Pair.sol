@@ -12,6 +12,8 @@ interface IERC20 {
 }
 
 error InsufficientLiquidityMinted();
+error InsufficientLiquidityBurned();
+error TransferFailed();
 
 contract HooliswapV2Pair is ERC20, Math {
     using FixedPointMathLib for uint256;
@@ -41,7 +43,7 @@ contract HooliswapV2Pair is ERC20, Math {
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
 
-        // calculate newly deposited amounts that
+        // Calculate newly deposited amounts that
         // haven’t yet been counted (saved in reserves)
         uint256 amount0 = balance0 - reserve0;
         uint256 amount1 = balance1 - reserve1;
@@ -92,25 +94,58 @@ contract HooliswapV2Pair is ERC20, Math {
             // provide equal value in both. If they don't, we give them
             // liquidity tokens based on the lesser value they provided as a punishment
 
-            // For example:
+            // example-1:
+            //
             // r0   r1
             // 1001 1001
             // mean = sqrt(1001 * 1001) = 10001
             // initial_liquidity = mean - MINIMUM_LIQUDITY = 1001 - 1000 = 1
-            // total_supply = initial_liquidity = 1
+            // total_supply = 1000
             //
             // lets say the ration of deposited amounts is diffent,
             // LP amounts will also be different, and one of them will be bigger than the other
             //
-            // if we use max:
-            // add(1, 2) = max(1 * 1/1001, 2 * 1/1001)
-            //           = max(1/1001, 2/1001) = 2/1001
-            //           = 0.00199800199
+            // lp_shares_max(1, 2)
+            //           = max(1 * 1/1000, 2 * 1/1000)
+            //           = max(1/1000, 2/1000)
+            //           = 2/1000 = 0.002
             //
-            // if we use min:
-            // add(1, 2) = max(1 * 1/1001, 2 * 1/1001)
-            //           = max(1/1001, 2/1001) = 1/1001
-            //           = 0.00099900099
+            // lp_shares_min(1, 2) = 1/1000 = 0.001
+
+            // lp_shares_min(2, 2) = 2/1000 = 0.001
+
+            // If we choose the smaller one, we’ll punish for depositing of
+            // unbalanced liquidity (liquidity providers would get fewer LP-tokens)
+
+            // so:
+            // lp_shares_min(1, 2) = 1/1000 = 0.001
+            // lp_shares_min(1, 1) = 1/1000 = 0.001
+            //
+            // ^^^ amount of LP shares we get for
+            // depositing (1, 2) is the same as for depositing (1, 1)
+
+            // example-2:
+            //
+            // r0   r1
+            // 343 16807
+            // mean = sqrt(343 * 16807) = 2401
+            // initial_liquidity = mean - MINIMUM_LIQUDITY = 2401 - 1000 = 1401
+            // total_supply = 2401
+            //
+            // lets say the ration of deposited amounts is diffent,
+            // LP amounts will also be different, and one of them will be bigger than the other
+            //
+            // lp_shares_max(100, 100) = max(100 * 2401/343, 100 * 2401/16807)
+            //           = max(700, 14.2857142857)
+            //           = 700
+            //
+            // lp_shares_min(100, 100) = 14.2857142857
+            // lp_shares_min(100, 500) = max(100 * 2401/343, 500 * 2401/16807)
+            //                         = max(700, 71.4285714286)
+            //                         = 71.4285714286
+
+            // The closer we get to the pool proportion
+            // the more LP shares we get
 
             liquidity = min(
                 (amount0 * totalSupply) / r0,
@@ -126,6 +161,29 @@ contract HooliswapV2Pair is ERC20, Math {
         emit Mint(msg.sender, amount0, amount1);
     }
 
+    function burn() public {
+        uint256 balance0 = IERC20(token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(token1).balanceOf(address(this));
+        uint256 liquidity = balanceOf[msg.sender];
+
+        uint256 amount0 = (liquidity * balance0) / totalSupply;
+        uint256 amount1 = (liquidity * balance1) / totalSupply;
+
+        if (amount0 <= 0 || amount1 <= 0) revert InsufficientLiquidityBurned();
+
+        _burn(msg.sender, liquidity);
+
+        _safeTransfer(token0, msg.sender, amount0);
+        _safeTransfer(token1, msg.sender, amount1);
+
+        balance0 = IERC20(token0).balanceOf(address(this));
+        balance1 = IERC20(token1).balanceOf(address(this));
+
+        _update(balance0, balance1);
+
+        emit Burn(msg.sender, amount0, amount1);
+    }
+
     function getReserves()
         public
         view
@@ -136,6 +194,19 @@ contract HooliswapV2Pair is ERC20, Math {
         )
     {
         return (reserve0, reserve1, 0);
+    }
+
+    function _safeTransfer(
+        address token,
+        address to,
+        uint256 amount
+    ) private {
+        (bool success, bytes memory data) = token.call(
+            abi.encodeWithSignature("transfer(address,uint256)", to, amount)
+        );
+        if (!success || (data.length != 0 && !abi.decode(data, (bool)))) {
+            revert TransferFailed();
+        }
     }
 
     function _update(uint256 balance0, uint256 balance1) private {
