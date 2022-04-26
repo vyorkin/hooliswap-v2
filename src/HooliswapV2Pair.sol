@@ -11,9 +11,12 @@ interface IERC20 {
     function transfer(address to, uint256 amount) external;
 }
 
+error InsufficientLiquidity();
 error InsufficientLiquidityMinted();
 error InsufficientLiquidityBurned();
 error TransferFailed();
+error InsufficientOutputAmount();
+error InvalidK();
 
 contract HooliswapV2Pair is ERC20, Math {
     using FixedPointMathLib for uint256;
@@ -30,6 +33,12 @@ contract HooliswapV2Pair is ERC20, Math {
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
     event Burn(address indexed sender, uint256 amount0, uint256 amount1);
     event Sync(uint256 reserve0, uint256 reserve1);
+    event Swap(
+        address indexed sender,
+        uint256 amount0Out,
+        uint256 amount1Out,
+        address indexed to
+    );
 
     constructor(address _token0, address _token1)
         ERC20("Hooliswap Pair", "HOOLI-V2", 18)
@@ -156,9 +165,57 @@ contract HooliswapV2Pair is ERC20, Math {
         if (liquidity <= 0) revert InsufficientLiquidityMinted();
 
         _mint(msg.sender, liquidity);
-        _update(balance0, balance1);
+        _update(balance0, balance1, r0, r1);
 
         emit Mint(msg.sender, amount0, amount1);
+    }
+
+    function swap(
+        uint256 _amount0Out,
+        uint256 _amount1Out,
+        address _to
+    ) public {
+        if (_amount0Out == 0 && _amount1Out == 0) {
+            revert InsufficientOutputAmount();
+        }
+
+        (uint112 r0, uint112 r1, ) = getReserves();
+        // Ensure that there are enough of reserves to send to user
+        if (_amount0Out > r0 || _amount1Out > r1) {
+            revert InsufficientLiquidity();
+        }
+
+        // Calculate token balances of this contract minus the
+        // amounts we’re expected to send to the caller.
+        //
+        // At this point, it’s expected that the caller has
+        // sent tokens they want to trade in to this contract
+
+        uint256 balance0 = IERC20(token0).balanceOf(address(this)) -
+            _amount0Out;
+        uint256 balance1 = IERC20(token1).balanceOf(address(this)) -
+            _amount1Out;
+
+        // We need to ensure that product of new reserves is
+        // equal or greater than the product of current reserves
+
+        if (balance0 * balance1 < uint256(r0) * uint256(r1)) {
+            revert InvalidK();
+        }
+
+        // If this requirement is met then:
+        // - The caller has calculated the exchange rate correctly (including slippage).
+        // - The output amount is correct.
+        // - The amount transferred to the contract is also correct.
+
+        // Transfer tokens to the caller and to update the reserves
+
+        _update(balance0, balance1, r0, r1);
+
+        if (_amount0Out > 0) _safeTransfer(token0, _to, _amount0Out);
+        if (_amount1Out > 0) _safeTransfer(token1, _to, _amount1Out);
+
+        emit Swap(msg.sender, _amount0Out, _amount1Out, _to);
     }
 
     function burn() public {
@@ -179,7 +236,8 @@ contract HooliswapV2Pair is ERC20, Math {
         balance0 = IERC20(token0).balanceOf(address(this));
         balance1 = IERC20(token1).balanceOf(address(this));
 
-        _update(balance0, balance1);
+        (uint112 r0, uint112 r1, ) = getReserves();
+        _update(balance0, balance1, r0, r1);
 
         emit Burn(msg.sender, amount0, amount1);
     }
@@ -209,9 +267,14 @@ contract HooliswapV2Pair is ERC20, Math {
         }
     }
 
-    function _update(uint256 balance0, uint256 balance1) private {
-        reserve0 = uint112(balance0);
-        reserve1 = uint112(balance1);
+    function _update(
+        uint256 _balance0,
+        uint256 _balance1,
+        uint256 _reserve0,
+        uint256 _reserve1
+    ) private {
+        reserve0 = uint112(_balance0);
+        reserve1 = uint112(_balance1);
 
         emit Sync(reserve0, reserve1);
     }
