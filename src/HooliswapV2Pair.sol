@@ -4,6 +4,7 @@ pragma solidity ^0.8.2;
 import "solmate/tokens/ERC20.sol";
 import "solmate/utils/FixedPointMathLib.sol";
 import "./libraries/Math.sol";
+import "./libraries/UQ112x112.sol";
 
 interface IERC20 {
     function balanceOf(address) external returns (uint256);
@@ -17,9 +18,11 @@ error InsufficientLiquidityBurned();
 error TransferFailed();
 error InsufficientOutputAmount();
 error InvalidK();
+error BalanceOverflow();
 
 contract HooliswapV2Pair is ERC20, Math {
     using FixedPointMathLib for uint256;
+    using UQ112x112 for uint224;
 
     uint256 constant MINIMUM_LIQUIDITY = 1000;
 
@@ -27,8 +30,33 @@ contract HooliswapV2Pair is ERC20, Math {
     address public token0;
     address public token1;
 
+    // The storage layout is important.
+    //
+    // EVM uses 32-byte storage slots:
+    // Every SLOAD call reads 32 bytes at a time,
+    // and every SSTORE call writes 32 bytes at a time.
+    //
+    // 112 + 112 + 32 = 256 bit = 32 bytes
+    // This means they can fit in one storage slot.
+    //
+    // This is why uint112 was chosen for reserves: the reserves variables are
+    // always read together, and it’s better to load them from storage at once.
+    // This saves one SLOAD operation, and since reserves are
+    // used very often, this is huge gas saving.
+    //
+    // These 3 variables go after a variable that takes a full slot
+    // (address type takes 40 bytes - 2 storage slots),
+    // this ensures that the first of them won’t be packed in the previous slot
+
     uint112 private reserve0;
     uint112 private reserve1;
+
+    // Stores the last swap timestamp
+    // (timestamp of the last _update() call)
+    uint32 private blockTimestampLast;
+
+    uint256 price0CumulativeLast;
+    uint256 price1CumulativeLast;
 
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
     event Burn(address indexed sender, uint256 amount0, uint256 amount1);
@@ -135,7 +163,7 @@ contract HooliswapV2Pair is ERC20, Math {
 
             // example-2:
             //
-            // r0   r1
+            // r0  r1
             // 343 16807
             // mean = sqrt(343 * 16807) = 2401
             // initial_liquidity = mean - MINIMUM_LIQUDITY = 2401 - 1000 = 1401
@@ -273,8 +301,30 @@ contract HooliswapV2Pair is ERC20, Math {
         uint256 _reserve0,
         uint256 _reserve1
     ) private {
+        // Downcast sanity check
+        if (_balance0 > type(uint112).max || _balance1 > type(uint112).max) {
+            revert BalanceOverflow();
+        }
+
+        // It’s expected that timestamp and accumulated prices overflow:
+        // nothing bad will happen when either of them overflows.
+        // We want them to overflow without throwing an error so they could function properly
+        unchecked {
+            uint32 timeElapsed = uint32(block.timestamp) - blockTimestampLast;
+
+            if (timeElapsed > 0 && _reserve0 > 0 && _reserve1 > 0) {
+                price0CumulativeLast +=
+                    uint256(UQ112x112.encode(reserve1).uqdiv(reserve0)) *
+                    timeElapsed;
+                price1CumulativeLast +=
+                    uint256(UQ112x112.encode(reserve0).uqdiv(reserve1)) *
+                    timeElapsed;
+            }
+        }
+
         reserve0 = uint112(_balance0);
         reserve1 = uint112(_balance1);
+        blockTimestampLast = uint32(block.timestamp);
 
         emit Sync(reserve0, reserve1);
     }
