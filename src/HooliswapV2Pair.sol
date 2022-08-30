@@ -75,7 +75,7 @@ contract HooliswapV2Pair is ERC20, Math {
         token1 = _token1;
     }
 
-    function mint() public {
+    function mint(address _to) public returns (uint256 liquidity) {
         (uint112 r0, uint112 r1, ) = getReserves();
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
@@ -84,8 +84,6 @@ contract HooliswapV2Pair is ERC20, Math {
         // haven’t yet been counted (saved in reserves)
         uint256 amount0 = balance0 - reserve0;
         uint256 amount1 = balance1 - reserve1;
-
-        uint256 liquidity;
 
         // Calculate the amount of LP-tokens that must
         // be issued as a reward for provided liquidity
@@ -100,12 +98,11 @@ contract HooliswapV2Pair is ERC20, Math {
             // any time is essentially independent of the ratio at
             // which liquidity was initially deposited.
             //
-            // For example:
-            // 1 ABC = 100 XYZ
+            // For example (from the Uniswap V2 whitepaper):
+            // Suppose that the price is: 1 ABC = 100 XYZ
             // mean(2ABC, 200XYZ) = sqrt(2 * 200) = 20 LP
             // mean(2ABC, 800XYZ) = sqrt(2 * 800) = 40 LP
             uint256 mean = (amount0 * amount1).sqrt();
-
             // This protect against one liquidity pool token share (1e-18) becoming
             // too expensive, which would turn away small liquidity providers.
             // Simply subtracting 1000 from initial liquidity makes the
@@ -139,17 +136,19 @@ contract HooliswapV2Pair is ERC20, Math {
             // initial_liquidity = mean - MINIMUM_LIQUDITY = 1001 - 1000 = 1
             // total_supply = 1000
             //
-            // lets say the ration of deposited amounts is diffent,
+            // Let's say the ratio of deposited amounts is different,
             // LP amounts will also be different, and one of them will be bigger than the other
             //
-            // lp_shares_max(1, 2)
-            //           = max(1 * 1/1000, 2 * 1/1000)
-            //           = max(1/1000, 2/1000)
-            //           = 2/1000 = 0.002
             //
             // lp_shares_min(1, 2) = 1/1000 = 0.001
 
             // lp_shares_min(2, 2) = 2/1000 = 0.001
+
+            // If we used "max" instead:
+            // lp_shares_max(1, 2)
+            //           = max(1 * 1/1000, 2 * 1/1000)
+            //           = max(1/1000, 2/1000)
+            //           = 2/1000 = 0.002
 
             // If we choose the smaller one, we’ll punish for depositing of
             // unbalanced liquidity (liquidity providers would get fewer LP-tokens)
@@ -172,15 +171,18 @@ contract HooliswapV2Pair is ERC20, Math {
             // lets say the ration of deposited amounts is diffent,
             // LP amounts will also be different, and one of them will be bigger than the other
             //
+            //
+            // lp_shares_min(100, 100) = 14.2857142857
+            // lp_shares_min(100, 500) = min(100 * 2401/343, 500 * 2401/16807)
+            //                         = min(700, 71.4285714286)
+            //                         = 71.4285714286
+
+            // But if we used "max" instead:
             // lp_shares_max(100, 100) = max(100 * 2401/343, 100 * 2401/16807)
             //           = max(700, 14.2857142857)
             //           = 700
-            //
-            // lp_shares_min(100, 100) = 14.2857142857
-            // lp_shares_min(100, 500) = max(100 * 2401/343, 500 * 2401/16807)
-            //                         = max(700, 71.4285714286)
-            //                         = 71.4285714286
 
+            // Summary:
             // The closer we get to the pool proportion
             // the more LP shares we get
 
@@ -192,7 +194,7 @@ contract HooliswapV2Pair is ERC20, Math {
 
         if (liquidity <= 0) revert InsufficientLiquidityMinted();
 
-        _mint(msg.sender, liquidity);
+        _mint(_to, liquidity);
         _update(balance0, balance1, r0, r1);
 
         emit Mint(msg.sender, amount0, amount1);
@@ -217,7 +219,7 @@ contract HooliswapV2Pair is ERC20, Math {
         // amounts we’re expected to send to the caller.
         //
         // At this point, it’s expected that the caller has
-        // sent tokens they want to trade in to this contract
+        // sent tokens they want to trade in to this contract.
 
         uint256 balance0 = IERC20(token0).balanceOf(address(this)) -
             _amount0Out;
@@ -225,7 +227,7 @@ contract HooliswapV2Pair is ERC20, Math {
             _amount1Out;
 
         // We need to ensure that product of new reserves is
-        // equal or greater than the product of current reserves
+        // equal or greater than the product of current reserves.
 
         if (balance0 * balance1 < uint256(r0) * uint256(r1)) {
             revert InvalidK();
@@ -236,7 +238,7 @@ contract HooliswapV2Pair is ERC20, Math {
         // - The output amount is correct.
         // - The amount transferred to the contract is also correct.
 
-        // Transfer tokens to the caller and to update the reserves
+        // Transfer tokens to the caller and to update the reserves and TWAP.
 
         _update(balance0, balance1, r0, r1);
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
 
-import "./HooliswapV2Pair.sol";
-import "./interfaces/IHooliswapV2Pair.sol";
+import {HooliswapV2Pair} from "./HooliswapV2Pair.sol";
+import {IHooliswapV2Pair} from "./interfaces/IHooliswapV2Pair.sol";
 
 error IdenticalAddresses();
 error PairExists();

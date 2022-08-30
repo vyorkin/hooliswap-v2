@@ -12,4 +12,6 @@ interface IHooliswapV2Pair {
             uint112,
             uint32
         );
+
+    function mint(address) external returns (uint256 liquidity);
 }

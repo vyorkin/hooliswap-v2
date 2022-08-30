@@ -40,7 +40,7 @@ contract ERC20Thief {
         trick = !trick;
     }
 
-    function balanceOf(address addr) public returns (uint256) {
+    function balanceOf(address addr) public view returns (uint256) {
         if (trick) {
             return 100 ether;
         } else {
