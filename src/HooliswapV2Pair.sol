@@ -215,21 +215,30 @@ contract HooliswapV2Pair is ERC20, Math {
             revert InsufficientLiquidity();
         }
 
-        // Calculate token balances of this contract minus the
-        // amounts we’re expected to send to the caller.
-        //
-        // At this point, it’s expected that the caller has
-        // sent tokens they want to trade in to this contract.
+        if (_amount0Out > 0) _safeTransfer(token0, _to, _amount0Out);
+        if (_amount1Out > 0) _safeTransfer(token1, _to, _amount1Out);
 
-        uint256 balance0 = IERC20(token0).balanceOf(address(this)) -
-            _amount0Out;
-        uint256 balance1 = IERC20(token1).balanceOf(address(this)) -
-            _amount1Out;
+        uint256 balance0 = IERC20(token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(token1).balanceOf(address(this));
+
+        // balance0 = r0 + _amount0In - _amount0Out
+        // <=>
+        // _amount0In = balance0 - (r0 - _amount0Out)
+
+        uint256 amount0In = balance0 > r0 - _amount0Out
+            ? balance0 - (r0 - _amount0Out)
+            : 0;
+        uint256 amount1In = balance1 > r1 - _amount1Out
+            ? balance1 - (r1 - _amount1Out)
+            : 0;
+
+        uint256 balance0Adj = balance0 * 1000 - amount0In * 3;
+        uint256 balance1Adj = balance1 * 1000 - amount1In * 3;
 
         // We need to ensure that product of new reserves is
         // equal or greater than the product of current reserves.
 
-        if (balance0 * balance1 < uint256(r0) * uint256(r1)) {
+        if (balance0Adj * balance1Adj < uint256(r0) * uint256(r1) * (1000**2)) {
             revert InvalidK();
         }
 
@@ -242,13 +251,13 @@ contract HooliswapV2Pair is ERC20, Math {
 
         _update(balance0, balance1, r0, r1);
 
-        if (_amount0Out > 0) _safeTransfer(token0, _to, _amount0Out);
-        if (_amount1Out > 0) _safeTransfer(token1, _to, _amount1Out);
-
         emit Swap(msg.sender, _amount0Out, _amount1Out, _to);
     }
 
-    function burn(address _to) public returns (uint256 amount0, uint256 amount1) {
+    function burn(address _to)
+        public
+        returns (uint256 amount0, uint256 amount1)
+    {
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
         uint256 liquidity = balanceOf[address(this)];

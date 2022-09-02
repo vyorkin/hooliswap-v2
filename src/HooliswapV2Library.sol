@@ -14,7 +14,7 @@ library HooliswapV2Library {
         address _factory,
         uint256 _amountIn,
         address[] memory _path
-    ) public returns (uint256[] memory) {
+    ) public view returns (uint256[] memory) {
         if (_path.length < 2) revert InvalidPath();
         uint256[] memory amounts = new uint256[](_path.length);
         amounts[0] = _amountIn;

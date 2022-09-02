@@ -207,6 +207,21 @@ contract HooliswapV2PairTest is DSTest {
         assertReserves(pairAB, 1 ether + 0.1 ether, 2 ether - 0.18 ether);
     }
 
+    function testSwapUnpaidFee() public {
+        tokenA.transfer(address(pairAB), 1 ether);
+        tokenB.transfer(address(pairAB), 2 ether);
+        pairAB.mint(address(this));
+
+        tokenA.transfer(address(pairAB), 0.1 ether);
+
+        vm.expectRevert(encodeError("InvalidK()"));
+        pairAB.swap(0, 0.19 ether, address(this));
+
+        pairAB.swap(0, 0.18 ether, address(this));
+        assertEq(tokenA.balanceOf(address(this)), 10 ether - 1.1 ether);
+        assertEq(tokenB.balanceOf(address(this)), 10 ether - 1.82 ether);
+    }
+
     function testSwapTrick() public {
         tokenA.transfer(address(pairAC), 1 ether);
         tokenC.transfer(address(pairAC), 2 ether);
@@ -236,6 +251,22 @@ contract HooliswapV2PairTest is DSTest {
             "unexpected tokenA balance"
         );
         assertReserves(pairAB, 1 ether - 0.08 ether, 2 ether + 0.2 ether);
+    }
+
+    function encodeError(string memory error)
+        internal
+        pure
+        returns (bytes memory encoded)
+    {
+        encoded = abi.encodeWithSignature(error);
+    }
+
+    function encodeError(string memory error, uint256 a)
+        internal
+        pure
+        returns (bytes memory encoded)
+    {
+        encoded = abi.encodeWithSignature(error, a);
     }
 }
 
