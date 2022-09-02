@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
 
-import "solmate/tokens/ERC20.sol";
-import "solmate/utils/FixedPointMathLib.sol";
-import "./libraries/Math.sol";
-import "./libraries/UQ112x112.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
+import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {Math} from "./libraries/Math.sol";
+import {UQ112x112} from "./libraries/UQ112x112.sol";
 
 interface IERC20 {
     function balanceOf(address) external returns (uint256);
@@ -248,20 +248,20 @@ contract HooliswapV2Pair is ERC20, Math {
         emit Swap(msg.sender, _amount0Out, _amount1Out, _to);
     }
 
-    function burn() public {
+    function burn(address _to) public returns (uint256 amount0, uint256 amount1) {
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
-        uint256 liquidity = balanceOf[msg.sender];
+        uint256 liquidity = balanceOf[address(this)];
 
-        uint256 amount0 = (liquidity * balance0) / totalSupply;
-        uint256 amount1 = (liquidity * balance1) / totalSupply;
+        amount0 = (liquidity * balance0) / totalSupply;
+        amount1 = (liquidity * balance1) / totalSupply;
 
-        if (amount0 <= 0 || amount1 <= 0) revert InsufficientLiquidityBurned();
+        if (amount0 == 0 || amount1 == 0) revert InsufficientLiquidityBurned();
 
-        _burn(msg.sender, liquidity);
+        _burn(address(this), liquidity);
 
-        _safeTransfer(token0, msg.sender, amount0);
-        _safeTransfer(token1, msg.sender, amount1);
+        _safeTransfer(token0, _to, amount0);
+        _safeTransfer(token1, _to, amount1);
 
         balance0 = IERC20(token0).balanceOf(address(this));
         balance1 = IERC20(token1).balanceOf(address(this));

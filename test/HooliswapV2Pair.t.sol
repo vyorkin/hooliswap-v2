@@ -108,7 +108,10 @@ contract HooliswapV2PairTest is DSTest {
         tokenB.transfer(address(pairAB), 1 ether);
 
         pairAB.mint(address(this));
-        pairAB.burn();
+
+        uint256 liquidity = pairAB.balanceOf(address(this));
+        pairAB.transfer(address(pairAB), liquidity);
+        pairAB.burn(address(this));
 
         // No LP tokens
         assertEq(pairAB.balanceOf(address(this)), 0);
@@ -131,7 +134,10 @@ contract HooliswapV2PairTest is DSTest {
         tokenB.transfer(address(pairAB), 1 ether);
 
         pairAB.mint(address(this)); // + 1 LP
-        pairAB.burn();
+
+        uint256 liquidity = pairAB.balanceOf(address(this));
+        pairAB.transfer(address(pairAB), liquidity);
+        pairAB.burn(address(this));
 
         assertEq(pairAB.balanceOf(address(this)), 0);
         assertReserves(pairAB, 1000 + 500, 1000);
@@ -167,7 +173,9 @@ contract HooliswapV2PairTest is DSTest {
         assertEq(pairAB.balanceOf(address(this)), 1 ether);
         assertReserves(pairAB, 3 ether, 2 ether);
 
-        pairAB.burn();
+        uint256 liquidity = pairAB.balanceOf(address(this));
+        pairAB.transfer(address(pairAB), liquidity);
+        pairAB.burn(address(this));
 
         assertEq(pairAB.balanceOf(address(this)), 0);
         assertReserves(pairAB, 1.5 ether, 1 ether);
@@ -246,6 +254,8 @@ contract TestUser {
     }
 
     function withdrawLiquidity(address _pair) public {
-        HooliswapV2Pair(_pair).burn();
+        uint256 liqudity = HooliswapV2Pair(_pair).balanceOf(address(this));
+        HooliswapV2Pair(_pair).transfer(_pair, liqudity);
+        HooliswapV2Pair(_pair).burn(address(this));
     }
 }

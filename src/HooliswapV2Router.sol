@@ -8,12 +8,78 @@ import {HooliswapV2Library} from "./HooliswapV2Library.sol";
 contract HooliswapV2Router {
     error InsufficientAAmount();
     error InsufficientBAmount();
+    error InsufficientOutputAmount();
     error SafeTransferFailed();
 
     IHooliswapV2Factory private immutable factory;
 
     constructor(address _factory) {
         factory = IHooliswapV2Factory(_factory);
+    }
+
+    function swapExactTokensForTokens(
+        uint256 _amountIn,
+        uint256 _amountOutMin,
+        address[] calldata _path,
+        address _to
+    ) public returns (uint256[] memory amounts) {
+        amounts = HooliswapV2Library.getAmountsOut(
+            address(factory),
+            _amountIn,
+            _path
+        );
+        // Check the final amount
+        if (amounts[amounts.length - 1] < _amountOutMin) {
+            revert InsufficientOutputAmount();
+        }
+        address pair0 = HooliswapV2Library.pairFor(
+            address(factory),
+            _path[0],
+            _path[1]
+        );
+        // If the final amount is good then send input tokens to the first pair
+        _safeTransferFrom(_path[0], msg.sender, pair0, amounts[0]);
+        // And perform chained swaps
+        _swap(amounts, _path, _to);
+    }
+
+    function _swap(
+        uint256[] memory _amounts,
+        address[] memory _path,
+        address _to
+    ) internal {
+        for (uint256 i; i < _path.length - 1; i++) {
+            // In pair contracts, token addresses are stored in ascending order,
+            // but, in the path, they’re sorted logically:
+            // input token goes first, then there’s 0 or
+            // multiple intermediate output tokens, then there’s final output token
+            (address input, address output) = (_path[i], _path[i + 1]);
+            (address token0, ) = HooliswapV2Library.sortTokens(input, output);
+            // Next, we’re sorting amounts so they match the order of tokens in pairs.
+            // When doing a swap, we want to correctly choose output token.
+            uint256 amountOut = _amounts[i + 1];
+            (uint256 amount0Out, uint256 amount1Out) = input == token0
+                ? (uint256(0), amountOut)
+                : (amountOut, uint256(0));
+            // Find swap destination address:
+            // 1. If current pair is not final in the path, we want to
+            // send tokens to next pair directly. This allows to save gas.
+            // 2. If current pair is final, we want to send tokens to address to_, which
+            // is the address that initiated the swap.
+            address to = i < _path.length - 2
+                ? HooliswapV2Library.pairFor(
+                    address(factory),
+                    output,
+                    _path[i + 2]
+                )
+                : _to;
+            address pair = HooliswapV2Library.pairFor(
+                address(factory),
+                input,
+                output
+            );
+            IHooliswapV2Pair(pair).swap(amount0Out, amount1Out, to);
+        }
     }
 
     function addLiquidity(
@@ -51,6 +117,25 @@ contract HooliswapV2Router {
         _safeTransferFrom(_tokenA, msg.sender, pair, amountA);
         _safeTransferFrom(_tokenB, msg.sender, pair, amountB);
         liquidity = IHooliswapV2Pair(pair).mint(_to);
+    }
+
+    function removeLiquidity(
+        address _tokenA,
+        address _tokenB,
+        uint256 _liquidity,
+        uint256 _amountAMin,
+        uint256 _amountBMin,
+        address _to
+    ) public returns (uint256 amountA, uint256 amountB) {
+        address pair = HooliswapV2Library.pairFor(
+            address(factory),
+            _tokenA,
+            _tokenB
+        );
+        IHooliswapV2Pair(pair).transferFrom(msg.sender, pair, _liquidity);
+        (amountA, amountB) = IHooliswapV2Pair(pair).burn(_to);
+        if (amountA < _amountAMin) revert InsufficientAAmount();
+        if (amountB < _amountBMin) revert InsufficientBAmount();
     }
 
     function _calculateLiquidity(

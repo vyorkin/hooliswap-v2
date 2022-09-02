@@ -8,6 +8,43 @@ import {IHooliswapV2Factory} from "./interfaces/IHooliswapV2Factory.sol";
 library HooliswapV2Library {
     error InsufficientAmount();
     error InsufficientLiquidity();
+    error InvalidPath();
+
+    function getAmountsOut(
+        address _factory,
+        uint256 _amountIn,
+        address[] memory _path
+    ) public returns (uint256[] memory) {
+        if (_path.length < 2) revert InvalidPath();
+        uint256[] memory amounts = new uint256[](_path.length);
+        amounts[0] = _amountIn;
+
+        for (uint256 i; i < _path.length - 1; i++) {
+            (uint256 r0, uint256 r1) = getReserves(
+                _factory,
+                _path[i],
+                _path[i + 1]
+            );
+            amounts[i + i] = getAmountOut(amounts[i], r0, r1);
+        }
+
+        return amounts;
+    }
+
+    function getAmountOut(
+        uint256 _amountIn,
+        uint256 _reserveIn,
+        uint256 _reserveOut
+    ) public pure returns (uint256) {
+        if (_amountIn == 0) revert InsufficientAmount();
+        if (_reserveIn == 0 || _reserveOut == 0) revert InsufficientLiquidity();
+
+        uint256 amountInWithFee = _amountIn * 997;
+        uint256 numerator = amountInWithFee * _reserveOut;
+        uint256 denominator = (_reserveIn * 1000) + amountInWithFee;
+
+        return numerator / denominator;
+    }
 
     function quote(
         uint256 _amountIn,
