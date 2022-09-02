@@ -1,28 +1,41 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
 
-import "ds-test/test.sol";
-import "../HooliswapV2Pair.sol";
-import "../mocks/ERC20Mintable.sol";
-import "../mocks/ERC20Thief.sol";
+import {DSTest} from "ds-test/test.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {HooliswapV2Pair} from "../src/HooliswapV2Pair.sol";
+import {ERC20Thief} from "./mocks/ERC20Thief.sol";
+import {Utils} from "./Utils.sol";
 
 contract HooliswapV2PairTest is DSTest {
-    ERC20Mintable tokenA;
-    ERC20Mintable tokenB;
-    ERC20Thief tokenC;
+    Vm private vm = Vm(HEVM_ADDRESS);
 
-    HooliswapV2Pair pairAB;
-    HooliswapV2Pair pairAC;
-    TestUser testUser;
+    MockERC20 private tokenA;
+    MockERC20 private tokenB;
+    ERC20Thief private tokenC;
+
+    HooliswapV2Pair private pairAB;
+    HooliswapV2Pair private pairAC;
+    TestUser private testUser;
 
     function setUp() public {
-        tokenA = new ERC20Mintable("Token A", "TKNA");
-        tokenB = new ERC20Mintable("Token B", "TKNB");
+        tokenA = new MockERC20("Token A", "TKNA", 18);
+        tokenB = new MockERC20("Token B", "TKNB", 18);
         tokenC = new ERC20Thief("Token C", "TKNC", 18);
+
+        vm.label(address(tokenA), "tokenA");
+        vm.label(address(tokenB), "tokenB");
+        vm.label(address(tokenC), "tokenC");
 
         pairAB = new HooliswapV2Pair(address(tokenA), address(tokenB));
         pairAC = new HooliswapV2Pair(address(tokenA), address(tokenC));
         testUser = new TestUser();
+
+        vm.label(address(pairAB), "pairAB");
+        vm.label(address(pairAC), "pairAC");
+        vm.label(address(testUser), "user");
 
         tokenA.mint(address(this), 10 ether);
         tokenB.mint(address(this), 10 ether);
@@ -48,9 +61,10 @@ contract HooliswapV2PairTest is DSTest {
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 1 ether);
 
-        pairAB.mint();
+        pairAB.mint(address(this));
 
-        // Expected amount of LP tokens
+        // Expected amount of LP tokens:
+        // sqrt(1 * 1) - 1000
         assertEq(pairAB.balanceOf(address(this)), 1 ether - 1000);
 
         assertReserves(pairAB, 1 ether, 1 ether);
@@ -61,12 +75,12 @@ contract HooliswapV2PairTest is DSTest {
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 1 ether);
 
-        pairAB.mint(); // + 1 LP
+        pairAB.mint(address(this)); // + 1 LP (-1000)
 
         tokenA.transfer(address(pairAB), 2 ether);
         tokenB.transfer(address(pairAB), 2 ether);
 
-        pairAB.mint(); // + 2 LP
+        pairAB.mint(address(this)); // + 2 LP
 
         assertEq(pairAB.balanceOf(address(this)), 3 ether - 1000);
         assertEq(pairAB.totalSupply(), 3 ether);
@@ -77,14 +91,14 @@ contract HooliswapV2PairTest is DSTest {
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 1 ether);
 
-        pairAB.mint(); // + 1 LP
+        pairAB.mint(address(this)); // + 1 LP (-1000)
         assertEq(pairAB.balanceOf(address(this)), 1 ether - 1000);
         assertReserves(pairAB, 1 ether, 1 ether);
 
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 2 ether);
 
-        pairAB.mint(); // + 1 LP
+        pairAB.mint(address(this)); // + 1 LP
         assertEq(pairAB.balanceOf(address(this)), 2 ether - 1000);
         assertReserves(pairAB, 2 ether, 3 ether);
     }
@@ -93,8 +107,11 @@ contract HooliswapV2PairTest is DSTest {
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 1 ether);
 
-        pairAB.mint();
-        pairAB.burn();
+        pairAB.mint(address(this));
+
+        uint256 liquidity = pairAB.balanceOf(address(this));
+        pairAB.transfer(address(pairAB), liquidity);
+        pairAB.burn(address(this));
 
         // No LP tokens
         assertEq(pairAB.balanceOf(address(this)), 0);
@@ -111,17 +128,21 @@ contract HooliswapV2PairTest is DSTest {
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 1 ether);
 
-        pairAB.mint(); // + 1 LP
+        pairAB.mint(address(this)); // + 1 LP (-1000)
 
         tokenA.transfer(address(pairAB), 2 ether);
         tokenB.transfer(address(pairAB), 1 ether);
 
-        pairAB.mint(); // + 1 LP
-        pairAB.burn();
+        pairAB.mint(address(this)); // + 1 LP
+
+        uint256 liquidity = pairAB.balanceOf(address(this));
+        pairAB.transfer(address(pairAB), liquidity);
+        pairAB.burn(address(this));
 
         assertEq(pairAB.balanceOf(address(this)), 0);
-        assertReserves(pairAB, 1500, 1000);
+        assertReserves(pairAB, 1000 + 500, 1000);
         assertEq(pairAB.totalSupply(), 1000);
+
         // We lost 500 tokenA.
         // This is the punishment for price manipulation
         assertEq(tokenA.balanceOf(address(this)), 10 ether - 1000 - 500);
@@ -147,12 +168,14 @@ contract HooliswapV2PairTest is DSTest {
         tokenA.transfer(address(pairAB), 2 ether);
         tokenB.transfer(address(pairAB), 1 ether);
 
-        pairAB.mint(); // + 1 LP for HooliswapV2PairTest
+        pairAB.mint(address(this)); // + 1 LP for HooliswapV2PairTest
 
         assertEq(pairAB.balanceOf(address(this)), 1 ether);
         assertReserves(pairAB, 3 ether, 2 ether);
 
-        pairAB.burn();
+        uint256 liquidity = pairAB.balanceOf(address(this));
+        pairAB.transfer(address(pairAB), liquidity);
+        pairAB.burn(address(this));
 
         assertEq(pairAB.balanceOf(address(this)), 0);
         assertReserves(pairAB, 1.5 ether, 1 ether);
@@ -166,7 +189,7 @@ contract HooliswapV2PairTest is DSTest {
     function testSwap() public {
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 2 ether);
-        pairAB.mint();
+        pairAB.mint(address(this));
 
         tokenA.transfer(address(pairAB), 0.1 ether);
         pairAB.swap(0, 0.18 ether, address(this));
@@ -187,7 +210,7 @@ contract HooliswapV2PairTest is DSTest {
     function testSwapTrick() public {
         tokenA.transfer(address(pairAC), 1 ether);
         tokenC.transfer(address(pairAC), 2 ether);
-        pairAC.mint();
+        pairAC.mint(address(this));
 
         tokenC.toggleTrick();
         pairAC.swap(0.9 ether, 1.9 ether, address(this));
@@ -197,7 +220,7 @@ contract HooliswapV2PairTest is DSTest {
     function testSwapReverseDirection() public {
         tokenA.transfer(address(pairAB), 1 ether);
         tokenB.transfer(address(pairAB), 2 ether);
-        pairAB.mint();
+        pairAB.mint(address(this));
 
         tokenB.transfer(address(pairAB), 0.2 ether);
         pairAB.swap(0.08 ether, 0, address(this));
@@ -227,10 +250,12 @@ contract TestUser {
         ERC20(_token0).transfer(_pair, _amount0);
         ERC20(_token1).transfer(_pair, _amount1);
 
-        HooliswapV2Pair(_pair).mint();
+        HooliswapV2Pair(_pair).mint(address(this));
     }
 
     function withdrawLiquidity(address _pair) public {
-        HooliswapV2Pair(_pair).burn();
+        uint256 liqudity = HooliswapV2Pair(_pair).balanceOf(address(this));
+        HooliswapV2Pair(_pair).transfer(_pair, liqudity);
+        HooliswapV2Pair(_pair).burn(address(this));
     }
 }

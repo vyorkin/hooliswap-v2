@@ -12,4 +12,4 @@ export const Main = () => {
       <Wallet />
     </div>
   );
-}
+};

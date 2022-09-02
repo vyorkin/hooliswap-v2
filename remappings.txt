@@ -1,3 +1,4 @@
 ds-test/=lib/ds-test/src/
 solmate/=lib/solmate/src/
 weird-erc20/=lib/solmate/lib/weird-erc20/src/
+forge-std/=lib/forge-std/src/
